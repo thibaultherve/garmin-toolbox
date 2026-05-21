@@ -1,0 +1,8 @@
+mcp>=1.6.0
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-dotenv>=1.0.0
+influxdb>=5.3.2
+requests>=2.31.0
+garminconnect>=0.2.18
+fit-tool>=0.9.13
