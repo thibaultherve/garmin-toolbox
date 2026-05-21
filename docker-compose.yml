@@ -1,0 +1,35 @@
+services:
+  garmin-toolbox:
+    build: .
+    container_name: garmin-toolbox
+    restart: unless-stopped
+    ports:
+      - "8770:8769"
+    env_file:
+      - .env
+    volumes:
+      # Bind-mount source for fast iteration without rebuild (--reload picks it up)
+      - ./:/app
+      # Per-activity JSON dumps land here, accessible via SMB share
+      - ./activities:/app/activities
+      # Share the Garmin Connect token cache with garmin-fetch-data so we don't
+      # maintain a second login. Container runs as root so HOME=/root.
+      - /volume2/docker/garmingrafana/garminconnect-tokens:/root/.garminconnect
+    command: uvicorn server:app --host 0.0.0.0 --port 8769 --reload
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8769/health')",  # internal port stays 8769
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+networks:
+  default:
+    external: true
+    name: garmingrafana_default

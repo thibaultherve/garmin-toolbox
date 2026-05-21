@@ -55,15 +55,19 @@ mcp.settings.transport_security = TransportSecuritySettings(
 # ---------------------------------------------------------------------------
 # Tool registration — one import per module
 # ---------------------------------------------------------------------------
-from tools import pace_tools  # noqa: E402,F401
+from tools import (  # noqa: E402,F401
+    pace_tools,
+    metrics_tools,
+    dump_tools,
+    workouts_plan_tools,
+    garmin_write_tools,
+)
 
 pace_tools.register(mcp)
-
-# Future modules (uncomment as they land):
-# from tools import metrics_tools; metrics_tools.register(mcp)
-# from tools import dump_tools; dump_tools.register(mcp)
-# from tools import workouts_plan_tools; workouts_plan_tools.register(mcp)
-# from tools import garmin_write_tools; garmin_write_tools.register(mcp)
+metrics_tools.register(mcp)
+dump_tools.register(mcp)
+workouts_plan_tools.register(mcp)
+garmin_write_tools.register(mcp)
 
 
 # ---------------------------------------------------------------------------
