@@ -1,8 +1,7 @@
-"""Per-activity dump tool — mirrors dashboard 03 atalanta-j panel queries.
+"""Per-activity dump tool — mirrors dashboard 03 activity drill-down panel queries.
 
-Writes a JSON to /app/activities/ (mounted volume, accessible via SMB from
-Windows at \\192.168.1.59\\docker\\projects\\garmin-toolbox\\activities\\) and
-returns a compact summary + path. Never returns the full ~5MB JSON inline.
+Writes a JSON to the activities output directory and returns a compact summary
+plus the file path. Never returns the full ~5MB JSON inline.
 """
 from __future__ import annotations
 
@@ -19,8 +18,8 @@ from mcp.server.fastmcp import FastMCP
 
 from lib import influx_client
 
-OUT_DIR = Path("/app/activities")
-SMB_BASE = "\\\\192.168.1.59\\docker\\projects\\garmin-toolbox\\activities"
+OUT_DIR = Path(os.environ.get("ACTIVITY_DUMP_PATH", "/app/activities"))
+SMB_BASE = os.environ.get("ACTIVITY_DUMP_SMB", "")
 PARIS = ZoneInfo("Europe/Paris")
 
 

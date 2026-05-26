@@ -8,7 +8,7 @@ Tools are organized in 5 internal modules under tools/:
   - pace         : pure math (no I/O)
   - metrics      : TRIMP, ACWR, CTL/ATL/TSB, polarization, decoupling, drift
   - dump         : per-second activity dump (writes to /app/activities/)
-  - workouts_plan: read workouts_data.py (Bedrock plan)
+  - workouts_plan: read workouts_data.py (training plan)
   - garmin_write : upload/schedule/delete on Garmin Connect
 """
 from __future__ import annotations
@@ -36,12 +36,12 @@ from mcp.server.transport_security import TransportSecuritySettings  # noqa: E40
 mcp = FastMCP(
     "garmin-toolbox",
     instructions=(
-        "Athletic computation + Garmin Connect ops for the Bedrock plan. "
-        "Provides pace conversions, training-load metrics (TRIMP, ACWR, "
-        "CTL/ATL/TSB, polarization, decoupling, HR drift), per-second "
-        "activity dumps with weather context, read access to the workouts "
-        "plan, and write operations on the Garmin Connect account (upload, "
-        "schedule, delete). Reads from the local InfluxDB populated by "
+        "Athletic computation + Garmin Connect ops. Provides pace "
+        "conversions, training-load metrics (TRIMP, ACWR, CTL/ATL/TSB, "
+        "polarization, decoupling, HR drift), per-second activity dumps "
+        "with weather context, read access to the training plan, and write "
+        "operations on the Garmin Connect account (upload, schedule, "
+        "delete). Reads from the local InfluxDB populated by "
         "garmin-grafana; uses the shared garminconnect token cache for "
         "Garmin API ops."
     ),

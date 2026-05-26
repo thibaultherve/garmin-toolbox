@@ -14,7 +14,7 @@ services:
       - ./activities:/app/activities
       # Share the Garmin Connect token cache with garmin-fetch-data so we don't
       # maintain a second login. Container runs as root so HOME=/root.
-      - /volume2/docker/garmingrafana/garminconnect-tokens:/root/.garminconnect
+      - ${GARMIN_TOKEN_PATH:-./data/tokens}:/root/.garminconnect
     command: uvicorn server:app --host 0.0.0.0 --port 8769 --reload
     healthcheck:
       test:

@@ -1,4 +1,4 @@
-"""Read access to the Bedrock plan defined in /app/workouts_data.py."""
+"""Read access to the training plan defined in workouts_data.py."""
 from __future__ import annotations
 
 import importlib
@@ -78,7 +78,7 @@ def register(mcp: FastMCP) -> None:
         code_pattern: str | None = None,
     ) -> dict:
         """
-        List planned workouts (Bedrock plan) with optional filters.
+        List planned workouts with optional filters.
 
         Parameters
         ----------

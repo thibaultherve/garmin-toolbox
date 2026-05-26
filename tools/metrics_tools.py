@@ -14,8 +14,8 @@ from mcp.server.fastmcp import FastMCP
 
 from lib import influx_client
 
-DEFAULT_HR_MAX = float(os.getenv("ATHLETE_HR_MAX", 195))
-DEFAULT_HR_REST = float(os.getenv("ATHLETE_HR_REST", 42))
+DEFAULT_HR_MAX = float(os.getenv("ATHLETE_HR_MAX", 190))
+DEFAULT_HR_REST = float(os.getenv("ATHLETE_HR_REST", 50))
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ def register(mcp: FastMCP) -> None:
         Formula : TRIMP = duration_min * HRr * 0.64 * exp(1.92 * HRr)
                   HRr   = (HR_avg - HR_rest) / (HR_max - HR_rest), clamped [0,1]
 
-        Defaults to athlete env vars (HR_max=195, HR_rest=42 for Thibault).
+        Defaults to athlete env vars ATHLETE_HR_MAX / ATHLETE_HR_REST.
         Source : Banister 1991.
         """
         try:
