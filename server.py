@@ -36,14 +36,16 @@ from mcp.server.transport_security import TransportSecuritySettings  # noqa: E40
 mcp = FastMCP(
     "garmin-toolbox",
     instructions=(
-        "Athletic computation + Garmin Connect ops. Provides pace "
-        "conversions, training-load metrics (TRIMP, ACWR, CTL/ATL/TSB, "
-        "polarization, decoupling, HR drift), per-second activity dumps "
-        "with weather context, read access to the training plan, and write "
-        "operations on the Garmin Connect account (upload, schedule, "
-        "delete). Reads from the local InfluxDB populated by "
-        "garmin-grafana; uses the shared garminconnect token cache for "
-        "Garmin API ops."
+        "Sport-science computation engine + Garmin Connect write ops. "
+        "Provides pace/speed conversions, training-load metrics (TRIMP, "
+        "ACWR, CTL/ATL/TSB, polarization, decoupling, HR drift), "
+        "per-second activity dumps with weather context, read access to "
+        "the training plan (workouts_data.py), and write operations on "
+        "the Garmin Connect account (upload, schedule, delete workouts). "
+        "Use this for calculations and mutations. For pre-formatted "
+        "training data (activity summaries, zones, recovery, fitness "
+        "trends, personal records), use garmin-coach instead. For visual "
+        "dashboard inspection or graph comparison, use grafana."
     ),
 )
 
