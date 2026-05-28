@@ -26,6 +26,12 @@ def _err(msg: str) -> dict:
     return {"ok": False, "error": msg}
 
 
+def _where_activity(selector: str, measurement: str = "ActivityGPS") -> str:
+    """Route numeric activity IDs to ActivityID tag, slugs to ActivitySelector."""
+    tag = "ActivityID" if selector.isdigit() else "ActivitySelector"
+    return f"""{measurement} WHERE "{tag}" = '{selector}'"""
+
+
 def _trimp_score(duration_min: float, hr_avg: float, hr_max: float, hr_rest: float) -> float:
     """Banister TRIMP (male). HRr clamped to [0, 1]."""
     if hr_max <= hr_rest:
@@ -102,7 +108,7 @@ def register(mcp: FastMCP) -> None:
             if selector:
                 rows = influx_client.query(
                     'SELECT mean("averageHR") AS hr, mean("movingDuration") AS dur '
-                    f"FROM \"ActivitySummary\" WHERE \"ActivitySelector\" = '{selector}'"
+                    f"FROM {_where_activity(selector, 'ActivitySummary')}"
                 )
                 if not rows or rows[0].get("hr") is None or rows[0].get("dur") is None:
                     return _err(f"No ActivitySummary row for selector={selector}")
@@ -330,7 +336,7 @@ def register(mcp: FastMCP) -> None:
         try:
             rows = influx_client.query(
                 'SELECT "HeartRate", "Speed", "GradeAdjustedSpeed", "Distance" '
-                f"FROM \"ActivityGPS\" WHERE \"ActivitySelector\" = '{selector}'"
+                f"FROM {_where_activity(selector)}"
             )
             if not rows:
                 return _err(f"No ActivityGPS rows for selector={selector}")
@@ -405,7 +411,7 @@ def register(mcp: FastMCP) -> None:
         try:
             rows = influx_client.query(
                 'SELECT "HeartRate", "Speed", "GradeAdjustedSpeed" '
-                f"FROM \"ActivityGPS\" WHERE \"ActivitySelector\" = '{selector}'"
+                f"FROM {_where_activity(selector)}"
             )
             if not rows:
                 return _err(f"No ActivityGPS rows for selector={selector}")

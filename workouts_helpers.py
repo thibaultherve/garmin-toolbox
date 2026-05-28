@@ -42,6 +42,12 @@ Duration
 ``duration_min`` is in minutes (float). Set ``duration_open=True`` for
 lap-button-ended steps (the watch waits for a manual lap press).
 
+Distance
+--------
+Use ``km(name, dist_km, **kw)`` for distance-based steps. The watch counts
+down kilometers instead of minutes — predictable weekly volume regardless
+of terrain or pace.
+
 Naming
 ------
 ``full_name(workout)``  → ``"YYYYMMDD_<code>"`` (Garmin workout name)
@@ -63,6 +69,20 @@ def s(name, dur, **kw):
     **kw : type (str), target (dict), notes (str), duration_open (bool)
     """
     d = {"kind": "step", "name": name, "duration_min": dur}
+    d.update(kw)
+    return d
+
+
+def km(name, dist_km, **kw):
+    """Create a distance-based workout step.
+
+    Parameters
+    ----------
+    name     : str — display name (e.g. "Z2 9km", "LR Trail 17km")
+    dist_km  : float — distance in kilometers
+    **kw     : type (str), target (dict), notes (str)
+    """
+    d = {"kind": "step", "name": name, "distance_km": dist_km}
     d.update(kw)
     return d
 

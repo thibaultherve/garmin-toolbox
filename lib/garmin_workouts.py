@@ -20,6 +20,8 @@ STEP_TYPE = {
 
 COND_TIME = {"conditionTypeId": 2, "conditionTypeKey": "time",
              "displayOrder": 2, "displayable": True}
+COND_DISTANCE = {"conditionTypeId": 3, "conditionTypeKey": "distance",
+                 "displayOrder": 3, "displayable": True}
 COND_LAP_BUTTON = {"conditionTypeId": 1, "conditionTypeKey": "lap.button",
                    "displayOrder": 1, "displayable": True}
 COND_ITERATIONS = {"conditionTypeId": 7, "conditionTypeKey": "iterations",
@@ -59,6 +61,9 @@ def _neutral_to_garmin_step(step_neutral: dict[str, Any], step_order: int) -> di
     if step_neutral.get("duration_open"):
         end_cond = COND_LAP_BUTTON
         end_val = None
+    elif "distance_km" in step_neutral:
+        end_cond = COND_DISTANCE
+        end_val = step_neutral["distance_km"] * 1000.0
     else:
         end_cond = COND_TIME
         end_val = step_neutral["duration_min"] * 60.0
@@ -106,11 +111,17 @@ def _neutral_to_garmin_steps(steps_neutral: list[dict], start_order: int = 1) ->
 
 
 def _estimate_seconds(steps: list[dict]) -> int:
+    """Estimate total workout duration. Distance steps use 6:30/km (390s/km)."""
     total = 0
     for s in steps:
         if s.get("type") == "ExecutableStepDTO":
-            if s.get("endConditionValue"):
-                total += s["endConditionValue"]
+            cond = s.get("endCondition", {}).get("conditionTypeKey", "")
+            val = s.get("endConditionValue")
+            if val:
+                if cond == "distance":
+                    total += val / 1000.0 * 390
+                else:
+                    total += val
         elif s.get("type") == "RepeatGroupDTO":
             inner = _estimate_seconds(s.get("workoutSteps", []))
             total += inner * s.get("numberOfIterations", 1)
