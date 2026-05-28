@@ -1,7 +1,7 @@
 """Pace / speed / distance / time conversions + multi-segment session predictor.
 
 Pure math, no I/O. Exists to ban mental arithmetic on sport conversions
-(cf. COACHING_PROTOCOL.md sec. 4.bis — post-incident 2026-05-17).
+(cf. COACHING_RULES.md §0 "Zero arithmetique mentale" — post-incident 2026-05-17).
 """
 from __future__ import annotations
 
