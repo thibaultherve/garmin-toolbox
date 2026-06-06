@@ -206,7 +206,8 @@ def register(mcp: FastMCP) -> None:
         """
         try:
             hr_max, hr_rest = _resolve_hr(hr_max, hr_rest)
-            by_day = _daily_loads(60, hr_max, hr_rest)
+            # Load 120d so the EWMA can fully warm up (see below).
+            by_day = _daily_loads(120, hr_max, hr_rest)
             today = date.today()
             last_28 = [by_day.get((today - timedelta(days=i)).isoformat(), 0.0)
                        for i in range(27, -1, -1)]
@@ -214,8 +215,14 @@ def register(mcp: FastMCP) -> None:
             chronic = sum(last_28) / 28.0
             rolling = acute / chronic if chronic > 0 else None
 
-            ewma_acute = _ewma(last_28, 2.0 / (7 + 1))
-            ewma_chronic = _ewma(last_28, 2.0 / (28 + 1))
+            # EWMA (Williams 2017): warm up over a long (~120d) series, NOT just the
+            # last 28d. Seeding the 28d-constant chronic EWMA from 0 over only 28
+            # points leaves it underconverged → chronic too low → ratio biased high.
+            # ~120d ≈ 4 chronic time-constants, so the zero seed is negligible.
+            full = [by_day.get((today - timedelta(days=i)).isoformat(), 0.0)
+                    for i in range(119, -1, -1)]
+            ewma_acute = _ewma(full, 2.0 / (7 + 1))
+            ewma_chronic = _ewma(full, 2.0 / (28 + 1))
             ewma_ratio = ewma_acute / ewma_chronic if ewma_chronic > 0 else None
 
             flags = []
@@ -247,7 +254,7 @@ def register(mcp: FastMCP) -> None:
         days: int = 90,
         hr_max: float | None = None,
         hr_rest: float | None = None,
-        brief: bool = False,
+        brief: bool = True,
     ) -> dict:
         """
         CTL/ATL/TSB — Performance Manager (Banister/TrainingPeaks).
@@ -259,9 +266,15 @@ def register(mcp: FastMCP) -> None:
         Parameters
         ----------
         days  : output window length (default 90). Internal warm-up is +60 days.
-        brief : if True, omit the per-day series (just current + flags).
+        brief : if True (DEFAULT), omit the per-day series and return only the
+                current CTL/ATL/TSB + flags (~180 bytes). Set brief=False to get
+                the full per-day series for plotting (~60x larger).
 
-        Flags : TSB < -30 = overreaching risk, TSB > +25 = detraining if not taper.
+        Scale: daily load is TRIMP (Banister), NOT TrainingPeaks TSS — so CTL/ATL/TSB
+        are on a TRIMP scale and are NOT comparable to Garmin/TP numbers. Flags fire
+        on form_pct (TSB as % of CTL, scale-invariant): < -30% heavy fatigue,
+        > +15% very fresh (taper/detraining). Read trends, not absolutes.
+
         HR_max / HR_rest default to Garmin's live HRZones snapshot.
         """
         try:
@@ -285,16 +298,27 @@ def register(mcp: FastMCP) -> None:
                         "tsb": round(ctl - atl, 1),
                     })
             last = series[-1]
+            # Scale-invariant form: TSB as % of CTL. Daily load is TRIMP, not TSS, so
+            # absolute TSB thresholds (TrainingPeaks -30/+25) don't transfer — use the
+            # ratio. Only meaningful once CTL is established: below ~10 TRIMP the ratio
+            # explodes (tiny denominator) and is statistically meaningless, so suppress
+            # it. ATL (7d) decays much faster than CTL (42d), so form rises within 1-2
+            # rest days — keep the positive flag conservative.
+            ctl_now = last["ctl"]
+            form_pct = round(last["tsb"] / ctl_now * 100.0, 1) if ctl_now >= 10 else None
+            current = dict(last, form_pct=form_pct)  # copy — don't mutate the series entry
             flags = []
-            if last["tsb"] < -30:
-                flags.append("TSB<-30 → overreaching risk (Banister)")
-            if last["tsb"] > 25:
-                flags.append("TSB>+25 → detraining if not pre-race")
+            if form_pct is not None:
+                if form_pct < -30:
+                    flags.append(f"form {form_pct:.0f}% (TSB/CTL) < -30% → heavy fatigue / overreaching risk")
+                elif form_pct > 25:
+                    flags.append(f"form {form_pct:.0f}% (TSB/CTL) > +25% → very fresh (taper/detraining)")
             result = {
                 "ok": True,
+                "scale": "TRIMP (Banister) — NOT TrainingPeaks TSS; absolute CTL/ATL/TSB are not comparable to Garmin/TP. Use form_pct and trends.",
                 "hr_max": hr_max,
                 "hr_rest": hr_rest,
-                "current": last,
+                "current": current,
                 "flags": flags,
             }
             if not brief:
