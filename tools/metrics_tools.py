@@ -1,7 +1,10 @@
 """Training-load metrics — TRIMP, ACWR, CTL/ATL/TSB, polarization, decoupling, drift.
 
-All readings from InfluxDB (read-only). Defaults to athlete env vars
-(ATHLETE_HR_MAX / ATHLETE_HR_REST) when not provided explicitly.
+All readings from InfluxDB (read-only). HR_max / HR_rest default to Garmin's
+live daily snapshot (the `HRZones` measurement, recalibrated daily by the
+fetcher), so TRIMP/ACWR/CTL track Garmin's current FCmax with no hardcoded
+value. The ATHLETE_HR_MAX / ATHLETE_HR_REST env vars are the fallback when the
+snapshot is unavailable, and an explicit argument always wins.
 """
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ from mcp.server.fastmcp import FastMCP
 
 from lib import influx_client
 
+# Static fallback only — used when the live HRZones snapshot can't be read.
 DEFAULT_HR_MAX = float(os.getenv("ATHLETE_HR_MAX", 190))
 DEFAULT_HR_REST = float(os.getenv("ATHLETE_HR_REST", 50))
 
@@ -24,6 +28,45 @@ DEFAULT_HR_REST = float(os.getenv("ATHLETE_HR_REST", 50))
 
 def _err(msg: str) -> dict:
     return {"ok": False, "error": msg}
+
+
+def _live_hr_params() -> tuple[float, float]:
+    """(FCmax, resting HR) from Garmin's latest daily HRZones snapshot.
+
+    Garmin recalibrates these daily and the fetcher writes a fresh `HRZones`
+    row, so reading them live keeps the load metrics in sync with the athlete's
+    current FCmax without a hardcoded constant. Filters `sport =~ running` to
+    match the dashboard zone-variable convention (HRZones carries one series per
+    sport). Falls back to the ATHLETE_HR_* env defaults on any miss/error.
+    """
+    hr_max, hr_rest = DEFAULT_HR_MAX, DEFAULT_HR_REST
+    try:
+        rows = influx_client.query(
+            'SELECT last("maxHeartRate") AS hr_max, '
+            'last("restingHeartRate") AS hr_rest '
+            'FROM "HRZones" WHERE "sport" =~ /(?i)running/'
+        )
+        if rows:
+            if rows[0].get("hr_max"):
+                hr_max = float(rows[0]["hr_max"])
+            if rows[0].get("hr_rest"):
+                hr_rest = float(rows[0]["hr_rest"])
+    except Exception:
+        pass  # static env fallback already in place
+    return hr_max, hr_rest
+
+
+def _resolve_hr(hr_max: float | None, hr_rest: float | None) -> tuple[float, float]:
+    """Fill any HR param left as None from the live snapshot; explicit args win.
+
+    Only hits InfluxDB when at least one param is unset, so callers passing both
+    explicitly pay no query cost.
+    """
+    if hr_max is not None and hr_rest is not None:
+        return hr_max, hr_rest
+    live_max, live_rest = _live_hr_params()
+    return (live_max if hr_max is None else hr_max,
+            live_rest if hr_rest is None else hr_rest)
 
 
 def _where_activity(selector: str, measurement: str = "ActivityGPS") -> str:
@@ -86,8 +129,8 @@ def register(mcp: FastMCP) -> None:
         selector: str | None = None,
         duration_min: float | None = None,
         hr_avg: float | None = None,
-        hr_max: float = DEFAULT_HR_MAX,
-        hr_rest: float = DEFAULT_HR_REST,
+        hr_max: float | None = None,
+        hr_rest: float | None = None,
     ) -> dict:
         """
         TRIMP (Banister 1991) — training impulse score.
@@ -101,10 +144,12 @@ def register(mcp: FastMCP) -> None:
         Formula : TRIMP = duration_min * HRr * 0.64 * exp(1.92 * HRr)
                   HRr   = (HR_avg - HR_rest) / (HR_max - HR_rest), clamped [0,1]
 
-        Defaults to athlete env vars ATHLETE_HR_MAX / ATHLETE_HR_REST.
+        HR_max / HR_rest default to Garmin's live HRZones snapshot (current
+        FCmax), env vars as fallback; pass them explicitly to override.
         Source : Banister 1991.
         """
         try:
+            hr_max, hr_rest = _resolve_hr(hr_max, hr_rest)
             if selector:
                 rows = influx_client.query(
                     'SELECT mean("averageHR") AS hr, mean("movingDuration") AS dur '
@@ -143,8 +188,8 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def compute_acwr(
-        hr_max: float = DEFAULT_HR_MAX,
-        hr_rest: float = DEFAULT_HR_REST,
+        hr_max: float | None = None,
+        hr_rest: float | None = None,
     ) -> dict:
         """
         ACWR — Acute:Chronic Workload Ratio (Hulin/Gabbett 2016 + Williams 2017).
@@ -156,8 +201,11 @@ def register(mcp: FastMCP) -> None:
         Daily load = TRIMP from ActivitySummary. Days w/o activity = 0.
         Sweet spot (Gabbett) : 0.8 - 1.3. Reports flags but never treats
         thresholds as hard cutoffs (Impellizzeri 2020 critique).
+
+        HR_max / HR_rest default to Garmin's live HRZones snapshot.
         """
         try:
+            hr_max, hr_rest = _resolve_hr(hr_max, hr_rest)
             by_day = _daily_loads(60, hr_max, hr_rest)
             today = date.today()
             last_28 = [by_day.get((today - timedelta(days=i)).isoformat(), 0.0)
@@ -197,8 +245,8 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool()
     async def compute_ctl_atl_tsb(
         days: int = 90,
-        hr_max: float = DEFAULT_HR_MAX,
-        hr_rest: float = DEFAULT_HR_REST,
+        hr_max: float | None = None,
+        hr_rest: float | None = None,
         brief: bool = False,
     ) -> dict:
         """
@@ -214,8 +262,10 @@ def register(mcp: FastMCP) -> None:
         brief : if True, omit the per-day series (just current + flags).
 
         Flags : TSB < -30 = overreaching risk, TSB > +25 = detraining if not taper.
+        HR_max / HR_rest default to Garmin's live HRZones snapshot.
         """
         try:
+            hr_max, hr_rest = _resolve_hr(hr_max, hr_rest)
             loads = _daily_loads(days + 60, hr_max, hr_rest)
             today = date.today()
             start = today - timedelta(days=days + 60)
