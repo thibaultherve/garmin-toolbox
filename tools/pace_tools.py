@@ -50,6 +50,8 @@ def kmh_to_pace(kmh: float) -> str:
 
 def dist_from_pace_time(pace: Any, minutes: float) -> float:
     p = _parse_pace(pace)
+    if p <= 0:
+        raise ValueError(f"pace must be > 0, got {pace}")
     return minutes / p
 
 
