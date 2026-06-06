@@ -32,6 +32,29 @@ def _api():
     return garmin_login.login_cached()
 
 
+def _is_rate_limited(exc: Exception) -> bool:
+    s = str(exc).lower()
+    return "429" in s or "too many requests" in s or "TooManyRequests" in type(exc).__name__
+
+
+def _call(fn, *args, retries: int = 4, base_delay: float = 3.0):
+    """Call a Garmin API fn with exponential backoff on 429 rate limits.
+
+    Garmin's API is aggressively rate-limited; a bare call can raise mid-bulk.
+    Retries on 429 only (other errors propagate immediately).
+    """
+    delay = base_delay
+    for attempt in range(retries):
+        try:
+            return fn(*args)
+        except Exception as exc:
+            if _is_rate_limited(exc) and attempt < retries - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise
+
+
 # ---------------------------------------------------------------------------
 # MCP tool registration
 # ---------------------------------------------------------------------------
@@ -111,33 +134,43 @@ def register(mcp: FastMCP) -> None:
             full_name = wd.full_name(match)
 
             api = _api()
-            deleted = []
 
+            # Resolve old instances first, but DON'T delete yet.
+            old_ids = []
             if replace:
                 existing = garmin_workouts.fetch_existing_by_name(api)
-                for old_id in existing.get(full_name, []):
-                    try:
-                        api.delete_workout(old_id)
-                        deleted.append(old_id)
-                        time.sleep(0.3)
-                    except Exception as exc:
-                        return _err(f"Delete old id={old_id} failed: {exc}")
+                old_ids = list(existing.get(full_name, []))
 
+            # Upload + schedule the NEW workout FIRST: a failure here must never
+            # leave the date without a workout (no delete-before-upload data loss).
             payload = garmin_workouts.workout_to_garmin_payload(match, full_name)
-            result = api.upload_workout(payload)
+            result = _call(api.upload_workout, payload)
             workout_id = result.get("workoutId")
             if not workout_id:
                 return _err(f"No workoutId in upload response: {result}")
 
-            api.schedule_workout(workout_id, match["date"])
+            _call(api.schedule_workout, workout_id, match["date"])
 
-            return {
+            # Only now delete the old instances (a transient duplicate is benign).
+            deleted, delete_warnings = [], []
+            for old_id in old_ids:
+                try:
+                    _call(api.delete_workout, old_id)
+                    deleted.append(old_id)
+                    time.sleep(0.3)
+                except Exception as exc:
+                    delete_warnings.append(f"old id={old_id}: {exc}")
+
+            out = {
                 "ok": True,
                 "workout_id": workout_id,
                 "full_name": full_name,
                 "scheduled_date": match["date"],
                 "deleted_old_ids": deleted,
             }
+            if delete_warnings:
+                out["delete_warnings"] = delete_warnings
+            return out
         except Exception as exc:
             return _err(str(exc))
 
@@ -165,7 +198,7 @@ def register(mcp: FastMCP) -> None:
             deleted = []
 
             if workout_id is not None:
-                api.delete_workout(workout_id)
+                _call(api.delete_workout, workout_id)
                 deleted.append(workout_id)
             else:
                 existing = garmin_workouts.fetch_existing_by_name(api)
@@ -173,7 +206,7 @@ def register(mcp: FastMCP) -> None:
                 if not ids:
                     return _err(f"No workout matches name={workout_name!r}")
                 for wid in ids:
-                    api.delete_workout(wid)
+                    _call(api.delete_workout, wid)
                     deleted.append(wid)
                     time.sleep(0.3)
 
@@ -222,21 +255,33 @@ def register(mcp: FastMCP) -> None:
                 full_name = wd.full_name(w)
                 entry: dict[str, Any] = {"code": w["code"], "full_name": full_name}
                 try:
-                    for old_id in existing.get(full_name, []):
-                        api.delete_workout(old_id)
-                        time.sleep(0.3)
+                    old_ids = list(existing.get(full_name, []))
+                    # Upload + schedule FIRST (never delete-before-upload).
                     payload = garmin_workouts.workout_to_garmin_payload(w, full_name)
-                    result = api.upload_workout(payload)
+                    result = _call(api.upload_workout, payload)
                     wid = result.get("workoutId")
                     if not wid:
                         entry["status"] = "failed"
                         entry["error"] = f"No workoutId in upload response: {result}"
                         results.append(entry)
                         continue
-                    api.schedule_workout(wid, w["date"])
+                    _call(api.schedule_workout, wid, w["date"])
+                    # Then delete old instances (transient duplicate is benign).
+                    deleted, dwarn = [], []
+                    for old_id in old_ids:
+                        try:
+                            _call(api.delete_workout, old_id)
+                            deleted.append(old_id)
+                            time.sleep(0.3)
+                        except Exception as exc:
+                            dwarn.append(f"old id={old_id}: {exc}")
                     entry["status"] = "ok"
                     entry["workout_id"] = wid
                     entry["scheduled_date"] = w["date"]
+                    if deleted:
+                        entry["deleted_old_ids"] = deleted
+                    if dwarn:
+                        entry["delete_warnings"] = dwarn
                     results.append(entry)
                     time.sleep(0.5)
                 except Exception as exc:
