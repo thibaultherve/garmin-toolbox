@@ -8,6 +8,10 @@ from __future__ import annotations
 from typing import Any
 
 SPORT_RUNNING = {"sportTypeId": 1, "sportTypeKey": "running", "displayOrder": 1}
+SPORT_CYCLING = {"sportTypeId": 2, "sportTypeKey": "cycling", "displayOrder": 2}
+
+# Map the neutral workout "sport" field -> Garmin sportType dict. Default running.
+SPORTS = {"running": SPORT_RUNNING, "cycling": SPORT_CYCLING}
 
 STEP_TYPE = {
     "warmup":   {"stepTypeId": 1, "stepTypeKey": "warmup",   "displayOrder": 1},
@@ -131,14 +135,15 @@ def _estimate_seconds(steps: list[dict]) -> int:
 def workout_to_garmin_payload(workout: dict, full_name: str) -> dict:
     """Build the Garmin API JSON payload from a neutral workout dict."""
     steps = _neutral_to_garmin_steps(workout["steps"])
+    sport = SPORTS.get(workout.get("sport", "running"), SPORT_RUNNING)
     return {
         "workoutName": full_name,
         "description": workout.get("description", "")[:1024],
-        "sportType": SPORT_RUNNING,
+        "sportType": sport,
         "estimatedDurationInSecs": _estimate_seconds(steps),
         "workoutSegments": [{
             "segmentOrder": 1,
-            "sportType": SPORT_RUNNING,
+            "sportType": sport,
             "workoutSteps": steps,
         }],
     }
